@@ -70,6 +70,8 @@ function extractEventIdFromUpdate(
  */
 for (const op of ["findOneAndUpdate", "updateOne"] as const) {
   bookingSchema.pre(op, async function (this: mongoose.Query<unknown, IBooking>) {
+    // Enable field validators and required checks for query-based updates
+    this.setOptions({ runValidators: true, context: "query" });
     const eventId = extractEventIdFromUpdate(this);
     if (!eventId) return;
     const eventExists = await Event.exists({ _id: eventId });
@@ -84,11 +86,7 @@ for (const op of ["findOneAndUpdate", "updateOne"] as const) {
  */
 bookingSchema.pre(
   "insertMany",
-  async function (
-    this: mongoose.Model<IBooking>,
-    _next: (err?: Error) => void,
-    docs: IBooking[]
-  ) {
+  async function (this: mongoose.Model<IBooking>, docs: IBooking[]) {
     for (const doc of docs) {
       if (!doc.eventId) continue;
       const eventExists = await Event.exists({ _id: doc.eventId });
