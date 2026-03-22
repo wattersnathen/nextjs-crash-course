@@ -147,6 +147,90 @@ eventSchema.pre("save", async function () {
   }
 });
 
+/**
+ * Reads title/date/time from a query update payload (handling both $set and
+ * top-level syntax), normalizes them, and writes results back into $set.
+ */
+async function normalizeQueryUpdate(
+  query: mongoose.Query<unknown, IEvent>
+): Promise<void> {
+  const update = query.getUpdate() as mongoose.UpdateQuery<IEvent> | null;
+  if (!update || Array.isArray(update)) return;
+
+  // Read a field from $set first, then fall back to the top-level update object
+  const readField = (key: keyof IEvent): string | undefined => {
+    const val =
+      (update.$set as Partial<IEvent> | undefined)?.[key] ??
+      (update as Partial<IEvent>)[key];
+    return typeof val === "string" ? val : undefined;
+  };
+
+  // Canonicalize all writes into $set and remove any top-level duplicate
+  const writeField = (key: string, value: string): void => {
+    if (!update.$set) (update as mongoose.UpdateQuery<IEvent>).$set = {};
+    (update.$set as Record<string, string>)[key] = value;
+    delete (update as Record<string, unknown>)[key];
+  };
+
+  const title = readField("title");
+  if (title !== undefined) {
+    const baseSlug = generateSlug(title);
+    let slug = baseSlug;
+    let suffix = 1;
+    // Exclude the document being updated from the collision check when _id is known
+    const excludeId = (query.getFilter() as { _id?: unknown })._id;
+    while (
+      await query.model.exists({
+        slug,
+        ...(excludeId !== undefined ? { _id: { $ne: excludeId } } : {}),
+      })
+    ) {
+      slug = `${baseSlug}-${suffix++}`;
+    }
+    writeField("slug", slug);
+  }
+
+  const date = readField("date");
+  if (date !== undefined) writeField("date", normalizeDate(date));
+
+  const time = readField("time");
+  if (time !== undefined) writeField("time", normalizeTime(time));
+}
+
+// Query middleware: normalize slug, date, and time for update operations
+for (const op of ["findOneAndUpdate", "updateOne", "updateMany"] as const) {
+  eventSchema.pre(op, async function (this: mongoose.Query<unknown, IEvent>) {
+    await normalizeQueryUpdate(this);
+  });
+}
+
+/**
+ * Bulk insert middleware: normalizes slug, date, and time on each document
+ * before insertion. Docs have no _id yet so the slug collision check is global.
+ */
+eventSchema.pre(
+  "insertMany",
+  async function (
+    this: mongoose.Model<IEvent>,
+    _next: (err?: Error) => void,
+    docs: IEvent[]
+  ) {
+    for (const doc of docs) {
+      if (doc.title) {
+        const baseSlug = generateSlug(doc.title);
+        let slug = baseSlug;
+        let suffix = 1;
+        while (await this.exists({ slug })) {
+          slug = `${baseSlug}-${suffix++}`;
+        }
+        doc.slug = slug;
+      }
+      if (doc.date) doc.date = normalizeDate(doc.date);
+      if (doc.time) doc.time = normalizeTime(doc.time);
+    }
+  }
+);
+
 // Guard against model re-registration on Next.js hot reloads
 const Event: Model<IEvent> =
   mongoose.models.Event ?? mongoose.model<IEvent>("Event", eventSchema);

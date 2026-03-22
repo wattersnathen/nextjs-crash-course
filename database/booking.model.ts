@@ -49,6 +49,56 @@ bookingSchema.pre("save", async function () {
   }
 });
 
+/**
+ * Extracts eventId from a query update payload, checking $set then top-level.
+ * Returns undefined for aggregation pipeline updates.
+ */
+function extractEventIdFromUpdate(
+  query: mongoose.Query<unknown, IBooking>
+): Types.ObjectId | undefined {
+  const update = query.getUpdate() as mongoose.UpdateQuery<IBooking> | null;
+  if (!update || Array.isArray(update)) return undefined;
+  return (
+    (update.$set as Partial<IBooking> | undefined)?.eventId ??
+    (update as Partial<IBooking>).eventId
+  );
+}
+
+/**
+ * Query middleware: validate that eventId references an existing Event
+ * for update operations.
+ */
+for (const op of ["findOneAndUpdate", "updateOne"] as const) {
+  bookingSchema.pre(op, async function (this: mongoose.Query<unknown, IBooking>) {
+    const eventId = extractEventIdFromUpdate(this);
+    if (!eventId) return;
+    const eventExists = await Event.exists({ _id: eventId });
+    if (!eventExists) {
+      throw new Error(`No event found with ID: ${String(eventId)}`);
+    }
+  });
+}
+
+/**
+ * Bulk insert middleware: verify all referenced events exist before insertion.
+ */
+bookingSchema.pre(
+  "insertMany",
+  async function (
+    this: mongoose.Model<IBooking>,
+    _next: (err?: Error) => void,
+    docs: IBooking[]
+  ) {
+    for (const doc of docs) {
+      if (!doc.eventId) continue;
+      const eventExists = await Event.exists({ _id: doc.eventId });
+      if (!eventExists) {
+        throw new Error(`No event found with ID: ${String(doc.eventId)}`);
+      }
+    }
+  }
+);
+
 // Guard against model re-registration on Next.js hot reloads
 const Booking: Model<IBooking> =
   mongoose.models.Booking ?? mongoose.model<IBooking>("Booking", bookingSchema);
