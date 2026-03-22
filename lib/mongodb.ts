@@ -1,12 +1,8 @@
 import mongoose, { Mongoose } from "mongoose";
 
-const MONGODB_URI = process.env.MONGODB_URI as string;
-
-if (!MONGODB_URI) {
-  throw new Error(
-    "Please define the MONGODB_URI environment variable in .env.local"
-  );
-}
+// Read at module level but validate lazily inside connectToDatabase()
+// to avoid crashing at import time (e.g. during build or test runs).
+const MONGODB_URI = process.env.MONGODB_URI;
 
 /**
  * Cached connection interface to store the Mongoose instance
@@ -40,6 +36,13 @@ if (!global.mongooseCache) {
  * multiple connections in development (due to hot module replacement).
  */
 export async function connectToDatabase(): Promise<Mongoose> {
+  // Defer the URI check to connection time so importing this module never throws
+  if (!MONGODB_URI) {
+    throw new Error(
+      "Please define the MONGODB_URI environment variable in .env.local"
+    );
+  }
+
   // Return the existing connection if already established
   if (cached.conn) {
     return cached.conn;

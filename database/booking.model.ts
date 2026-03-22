@@ -1,4 +1,5 @@
 import mongoose, { Document, Model, Schema, Types } from "mongoose";
+import Event from "./event.model"; // Ensures Event schema is registered before the pre-save hook runs
 
 export interface IBooking extends Document {
   eventId: Types.ObjectId;
@@ -42,12 +43,7 @@ bookingSchema.pre("save", async function (next) {
   // Only validate the reference when eventId is new or has changed
   if (!this.isModified("eventId")) return next();
 
-  const EventModel = mongoose.models.Event;
-  if (!EventModel) {
-    return next(new Error("Event model is not registered"));
-  }
-
-  const eventExists = await EventModel.exists({ _id: this.eventId });
+  const eventExists = await Event.exists({ _id: this.eventId });
   if (!eventExists) {
     return next(new Error(`No event found with ID: ${String(this.eventId)}`));
   }

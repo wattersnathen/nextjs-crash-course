@@ -54,16 +54,14 @@ function generateSlug(title: string): string {
 }
 
 /**
- * Normalizes a date string to ISO calendar format (YYYY-MM-DD).
- * Throws if the value cannot be parsed as a valid date.
+ * Validates that the date string is an ISO calendar date (YYYY-MM-DD) and returns it unchanged.
+ * Using new Date() for parsing is intentionally avoided — it shifts dates in timezones behind UTC.
  */
 function normalizeDate(date: string): string {
-  const parsed = new Date(date);
-  if (isNaN(parsed.getTime())) {
-    throw new Error(`Invalid date value: "${date}"`);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    throw new Error(`Invalid date value: "${date}". Expected format: YYYY-MM-DD`);
   }
-  // Extract the calendar portion only (drops time/timezone)
-  return parsed.toISOString().split("T")[0];
+  return date;
 }
 
 /**
@@ -95,11 +93,25 @@ function normalizeTime(time: string): string {
   throw new Error(`Invalid time format: "${time}"`);
 }
 
-// Pre-save: generate slug from title, normalize date and time
-eventSchema.pre("save", function (next) {
+// Pre-save: generate slug from title (with collision handling), normalize date and time
+eventSchema.pre("save", async function (next) {
   // Only regenerate the slug when the title is new or has changed
   if (this.isModified("title")) {
-    this.slug = generateSlug(this.title);
+    const baseSlug = generateSlug(this.title);
+    let slug = baseSlug;
+    let suffix = 1;
+
+    // Append an incremental suffix until a slug with no existing owner is found
+    while (
+      await (this.constructor as mongoose.Model<IEvent>).exists({
+        slug,
+        _id: { $ne: this._id },
+      })
+    ) {
+      slug = `${baseSlug}-${suffix++}`;
+    }
+
+    this.slug = slug;
   }
 
   if (this.isModified("date")) {
