@@ -39,16 +39,14 @@ const bookingSchema = new Schema<IBooking>(
  * Pre-save hook: verifies the referenced event exists before persisting the booking.
  * Prevents orphaned bookings that point to non-existent events.
  */
-bookingSchema.pre("save", async function (next) {
+bookingSchema.pre("save", async function () {
   // Only validate the reference when eventId is new or has changed
-  if (!this.isModified("eventId")) return next();
+  if (!this.isModified("eventId")) return;
 
   const eventExists = await Event.exists({ _id: this.eventId });
   if (!eventExists) {
-    return next(new Error(`No event found with ID: ${String(this.eventId)}`));
+    throw new Error(`No event found with ID: ${String(this.eventId)}`);
   }
-
-  next();
 });
 
 // Guard against model re-registration on Next.js hot reloads

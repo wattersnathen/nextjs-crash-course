@@ -118,7 +118,7 @@ function normalizeTime(time: string): string {
 }
 
 // Pre-save: generate slug from title (with collision handling), normalize date and time
-eventSchema.pre("save", async function (next) {
+eventSchema.pre("save", async function () {
   // Only regenerate the slug when the title is new or has changed
   if (this.isModified("title")) {
     const baseSlug = generateSlug(this.title);
@@ -145,8 +145,6 @@ eventSchema.pre("save", async function (next) {
   if (this.isModified("time")) {
     this.time = normalizeTime(this.time);
   }
-
-  next();
 });
 
 // Guard against model re-registration on Next.js hot reloads
