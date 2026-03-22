@@ -61,6 +61,19 @@ function normalizeDate(date: string): string {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new Error(`Invalid date value: "${date}". Expected format: YYYY-MM-DD`);
   }
+
+  // UTC round-trip check: catches invalid months/days and leap-year issues
+  // e.g. "2026-13-01" or "2026-02-30" pass the regex but fail here
+  const [year, month, day] = date.split("-").map(Number);
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (
+    utc.getUTCFullYear() !== year ||
+    utc.getUTCMonth() + 1 !== month ||
+    utc.getUTCDate() !== day
+  ) {
+    throw new Error(`Invalid date value: "${date}". Expected format: YYYY-MM-DD`);
+  }
+
   return date;
 }
 
@@ -74,6 +87,12 @@ function normalizeTime(time: string): string {
   // 12-hour input: pass through with zero-padded hour and uppercased period
   const match12 = /^(\d{1,2}):(\d{2})\s?(AM|PM)$/i.exec(trimmed);
   if (match12) {
+    const hourNum = parseInt(match12[1], 10);
+    const minsNum = parseInt(match12[2], 10);
+    // 12-hour clock: hour must be 1–12, minutes 0–59
+    if (hourNum < 1 || hourNum > 12 || minsNum < 0 || minsNum > 59) {
+      throw new Error(`Invalid time value: "${time}"`);
+    }
     const hour = match12[1].padStart(2, "0");
     const mins = match12[2];
     const period = match12[3].toUpperCase();
@@ -85,6 +104,11 @@ function normalizeTime(time: string): string {
   if (match24) {
     const h = parseInt(match24[1], 10);
     const mins = match24[2];
+    const minsNum = parseInt(mins, 10);
+    // 24-hour clock: hour must be 0–23, minutes 0–59
+    if (h < 0 || h > 23 || minsNum < 0 || minsNum > 59) {
+      throw new Error(`Invalid time value: "${time}"`);
+    }
     const period = h >= 12 ? "PM" : "AM";
     const hour12 = String(h % 12 || 12).padStart(2, "0");
     return `${hour12}:${mins} ${period}`;

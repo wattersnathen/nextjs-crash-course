@@ -1,9 +1,5 @@
 import mongoose, { Mongoose } from "mongoose";
 
-// Read at module level but validate lazily inside connectToDatabase()
-// to avoid crashing at import time (e.g. during build or test runs).
-const MONGODB_URI = process.env.MONGODB_URI;
-
 /**
  * Cached connection interface to store the Mongoose instance
  * and any in-progress connection promise across module reloads.
@@ -36,8 +32,10 @@ if (!global.mongooseCache) {
  * multiple connections in development (due to hot module replacement).
  */
 export async function connectToDatabase(): Promise<Mongoose> {
-  // Defer the URI check to connection time so importing this module never throws
-  if (!MONGODB_URI) {
+  // Read and validate at connection time so process.env is fully populated
+  // and importing this module never throws (e.g. during builds or tests).
+  const uri = process.env.MONGODB_URI;
+  if (!uri) {
     throw new Error(
       "Please define the MONGODB_URI environment variable in .env.local"
     );
@@ -50,7 +48,7 @@ export async function connectToDatabase(): Promise<Mongoose> {
 
   // Reuse an in-progress connection attempt instead of starting a new one
   if (!cached.promise) {
-    cached.promise = mongoose.connect(MONGODB_URI, {
+    cached.promise = mongoose.connect(uri, {
       bufferCommands: false, // Disable command buffering; fail fast if not connected
     });
   }
